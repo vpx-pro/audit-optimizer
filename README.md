@@ -54,6 +54,8 @@ pip install -r requirements.txt
 4. Run the server:
 ```bash
 python main.py
+or 
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 The API will be available at `http://localhost:8000`
@@ -76,6 +78,22 @@ npm run dev
 ```
 
 The app will be available at `http://localhost:3000`
+
+### Docker (Full Stack)
+
+1. Build the production image from the project root:
+```bash
+docker build -t audit-optimizer .
+```
+
+2. Run the container (exposes FastAPI + the built frontend on port 8000):
+```bash
+docker run --rm -p 8000:8000 audit-optimizer
+```
+
+3. Open `http://localhost:8000` to access the UI. All API endpoints remain under the `/api` prefix (e.g., `http://localhost:8000/api/health`).
+
+> The container bundles the compiled Vite app and serves static assets directly from the FastAPI process—no separate frontend host is required.
 
 ## API Endpoints
 

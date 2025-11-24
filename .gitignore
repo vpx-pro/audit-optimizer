@@ -1,0 +1,14 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.env
+.env.*
+venv/
+.venv/
+backend/.venv/
+backend/__pycache__/
+backend/generated_files/
+concept_data/
+frontend/node_modules/
+frontend/dist/
+

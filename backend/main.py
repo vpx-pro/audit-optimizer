@@ -1,17 +1,20 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Request, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
-from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel
-from pathlib import Path
-import pandas as pd
 import io
-from typing import List, Dict, Optional, Any
-import uvicorn
 import logging
 import math
+import os
 import re
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
+import uvicorn
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from services.risk_calculator import recalc_and_summarize_from_bytes
 from services.audit_selection_optimizer import run_audit_selection_optimizer
@@ -20,8 +23,12 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Audit Optimizer API")
-GENERATED_DIR = Path(__file__).resolve().parent / "generated_files"
+BASE_DIR = Path(__file__).resolve().parent
+GENERATED_DIR = BASE_DIR / "generated_files"
 GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+
+DEFAULT_FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
+FRONTEND_DIST = Path(os.environ.get("FRONTEND_DIST", DEFAULT_FRONTEND_DIST)).resolve()
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -40,9 +47,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-async def root():
-    return {"message": "Audit Optimizer API"}
+@app.get("/api/health")
+async def health():
+    return {"status": "ok"}
 
 @app.post("/api/upload-excel")
 async def upload_excel(file: UploadFile = File(...)):
@@ -364,6 +371,28 @@ async def upload_parameters(file: UploadFile = File(...)):
         error_detail = f"Error processing parameters file: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_detail)
         raise HTTPException(status_code=500, detail=f"Error processing parameters file: {str(e)}")
+
+
+if FRONTEND_DIST.exists():
+    assets_dir = FRONTEND_DIST / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="frontend-assets")
+
+    @app.get("/", include_in_schema=False)
+    async def serve_frontend():
+        index_file = FRONTEND_DIST / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Frontend build not found.")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def frontend_fallback(full_path: str):
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        index_file = FRONTEND_DIST / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Frontend build not found.")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
