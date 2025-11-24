@@ -1,0 +1,125 @@
+.optimizer-app {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 40px 20px;
+}
+
+.optimizer-container {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  padding: 40px;
+  max-width: 1400px;
+  width: 100%;
+}
+
+.optimizer-container .section {
+  margin-bottom: 35px;
+  padding: 25px;
+  background: #f8f9fa;
+  border-radius: 12px;
+}
+
+.optimizer-container .section h2 {
+  margin-bottom: 12px;
+}
+
+.optimizer-container .section-description {
+  color: #666;
+  margin-bottom: 16px;
+}
+
+.optimizer-container .metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.optimizer-container .metric-card {
+  background: white;
+  padding: 18px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.optimizer-container .metric-label {
+  font-size: 0.85rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.optimizer-container .metric-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #333;
+}
+
+.optimizer-container .risk-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.optimizer-container .risk-tag {
+  background: #e0e7ff;
+  color: #3b4cca;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.optimizer-container .table-wrapper {
+  margin-top: 15px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow-x: auto;
+}
+
+.optimizer-container .data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.optimizer-container .data-table th,
+.optimizer-container .data-table td {
+  padding: 12px;
+  border-bottom: 1px solid #eaecf0;
+  text-align: left;
+}
+
+.optimizer-container .data-table thead {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.optimizer-container .data-table tbody tr:hover {
+  background: #f0f4ff;
+}
+
+.optimizer-container .error-message {
+  margin-top: 16px;
+  padding: 12px;
+  border-left: 4px solid #e55353;
+  background: #fdecec;
+  color: #a12828;
+  border-radius: 8px;
+}
+
+@media (max-width: 768px) {
+  .optimizer-container {
+    padding: 20px;
+  }
+
+  .optimizer-container .metrics-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+}
+
