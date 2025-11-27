@@ -5,6 +5,7 @@ A full-stack application for importing Excel files, selecting columns, and perfo
 ## Features
 
 - Upload RAW Excel files (.xlsx, .xls)
+- Merge Audit Universe workbook with optional parameter files before running the risk calculator
 - Automatically run the Forest Risk calculator script on RAW uploads
 - View risk summary metrics (ratings, risk category breakdown, entity counts)
 - Upload and edit the Parameters workbook inline
@@ -78,6 +79,13 @@ npm run dev
 ```
 
 The app will be available at `http://localhost:3000`
+
+### Data Preparation Merge (optional but recommended)
+
+1. From the homepage, use the new **Merge Sources** step to upload the base Audit Universe workbook plus any of the optional parameter spreadsheets (1–8).
+2. Click **Merge & Continue** to let the backend combine them using the same logic as `concept_data/single_file_merge_final.py`.
+3. Download the merged workbook for archival if needed, or click **Auto-run next step** to feed it directly into the existing risk summary workflow.
+4. If you already maintain a fully merged workbook, use the “Skip merge” button to jump straight to the RAW upload screen.
 
 ### Docker (Full Stack)
 

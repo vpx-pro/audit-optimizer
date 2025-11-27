@@ -1,8 +1,20 @@
 import io
-from typing import List, Dict, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+
+
+DEFAULT_WEIGHTS: Dict[str, float] = {
+    "ns": 0.20,
+    "tot": 0.20,
+    "para": 0.15,
+    "arre": 0.15,
+    "sppc": 0.05,
+    "dc": 0.10,
+    "uc": 0.10,
+    "css": 0.05,
+}
 
 
 def to_num(series: pd.Series) -> pd.Series:
@@ -95,29 +107,6 @@ def rate_css(flag):
     return np.nan
 
 
-def total_rating(row):
-    ns = row["Non Stafff Expenditure Rating"] or 3.0
-    tot = row["TOTAL Expenditure Rating"] or 3.0
-    para = row["2A para Rating "] or 3.0
-    arre = row["Arrear of Audit Rating "] or 3.0
-    sppc = row["SP+ PC RATING"] or 3.0
-    dc = row["DC BILL RATING"] or 3.0
-    uc = row["UC RATING"] or 3.0
-    css = row["Cetrally Sponsored Scheme Rating"]
-    css = 0.0 if pd.isna(css) else css
-
-    return (
-        0.20 * ns
-        + 0.20 * tot
-        + 0.15 * para
-        + 0.15 * arre
-        + 0.05 * sppc
-        + 0.10 * dc
-        + 0.10 * uc
-        + 0.05 * css
-    )
-
-
 def risk_category(total_rating_value):
     if pd.isna(total_rating_value):
         return np.nan
@@ -138,7 +127,10 @@ def _normalize_numeric_columns(df: pd.DataFrame, columns: List[str]) -> List[str
     return valid_cols
 
 
-def recalc_and_summarize_from_bytes(file_bytes: bytes) -> Tuple[List[str], List[Dict], Dict]:
+def recalc_and_summarize_from_bytes(
+    file_bytes: bytes,
+    weights: Optional[Dict[str, float]] = None,
+) -> Tuple[List[str], List[Dict], Dict]:
     """
     Run the risk calculation pipeline using the uploaded Excel bytes.
     Returns (columns, records, metrics).
@@ -146,7 +138,17 @@ def recalc_and_summarize_from_bytes(file_bytes: bytes) -> Tuple[List[str], List[
     excel_file = io.BytesIO(file_bytes)
     df = pd.read_excel(excel_file)
 
-    col_slno = pick_col(df, ["Sl No.", "Sl No", "sno", "S No"])
+    # Merge provided weights with defaults so callers can override selectively.
+    if weights is None:
+        weights = DEFAULT_WEIGHTS
+    else:
+        merged_weights = DEFAULT_WEIGHTS.copy()
+        for key, value in weights.items():
+            if key in merged_weights and value is not None:
+                merged_weights[key] = float(value)
+        weights = merged_weights
+
+    col_slno = pick_col(df, ["Sl No.", "Sl No", "SI No.", "SI No", "sno", "S No", "sNo", "S.No", "S.No."])
     col_entity_id = pick_col(df, ["Audit entity ID", "Audit entity Id", "OIOS Code"])
     col_name = pick_col(df, ["Name of Audit Entity", "Name of Auditable Audit"])
     col_dept = pick_col(df, ["Department"])
@@ -221,7 +223,29 @@ def recalc_and_summarize_from_bytes(file_bytes: bytes) -> Tuple[List[str], List[
     else:
         df["Cetrally Sponsored Scheme Rating"] = 0.0
 
-    df["TOTAL RATING"] = df.apply(total_rating, axis=1)
+    def total_rating_row(row):
+        ns = row["Non Stafff Expenditure Rating"] or 3.0
+        tot = row["TOTAL Expenditure Rating"] or 3.0
+        para = row["2A para Rating "] or 3.0
+        arre = row["Arrear of Audit Rating "] or 3.0
+        sppc = row["SP+ PC RATING"] or 3.0
+        dc = row["DC BILL RATING"] or 3.0
+        uc = row["UC RATING"] or 3.0
+        css = row["Cetrally Sponsored Scheme Rating"]
+        css = 0.0 if pd.isna(css) else css
+
+        return (
+            weights["ns"] * ns
+            + weights["tot"] * tot
+            + weights["para"] * para
+            + weights["arre"] * arre
+            + weights["sppc"] * sppc
+            + weights["dc"] * dc
+            + weights["uc"] * uc
+            + weights["css"] * css
+        )
+
+    df["TOTAL RATING"] = df.apply(total_rating_row, axis=1)
     df["Risk CATEGORIZATION @Bell Curve"] = df["TOTAL RATING"].apply(risk_category)
 
     df_final = pd.DataFrame(

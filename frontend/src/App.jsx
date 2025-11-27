@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import axios from 'axios'
 import './App.css'
 import DataAnalysisScreen from './DataAnalysisScreen'
+import MergePrepScreen from './MergePrepScreen'
 import OptimizerScreen from './OptimizerScreen'
 
 function App() {
@@ -9,17 +10,46 @@ function App() {
   const [fileInfo, setFileInfo] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [view, setView] = useState('upload') // upload | parameters | optimizer
+  const [view, setView] = useState('merge') // merge | upload | parameters | optimizer
   const [selectedData, setSelectedData] = useState(null)
   const [summaryColumns, setSummaryColumns] = useState([])
   const [summaryData, setSummaryData] = useState([])
   const [summaryMetrics, setSummaryMetrics] = useState(null)
   const [generatedFileInfo, setGeneratedFileInfo] = useState(null)
+  const [autoFileLabel, setAutoFileLabel] = useState(null)
+  const [weights, setWeights] = useState({
+    ns: 0.2,
+    tot: 0.2,
+    para: 0.15,
+    arre: 0.15,
+    sppc: 0.05,
+    dc: 0.1,
+    uc: 0.1,
+    css: 0.05
+  })
+
+  const updateWeight = (key, rawValue) => {
+    const parsed = parseFloat(rawValue)
+    const newVal = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+    setWeights((prev) => ({ ...prev, [key]: newVal }))
+  }
+
+  const weightSum =
+    weights.ns +
+    weights.tot +
+    weights.para +
+    weights.arre +
+    weights.sppc +
+    weights.dc +
+    weights.uc +
+    weights.css
+  const isWeightSumValid = Math.abs(weightSum - 1) < 0.001
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0]
     if (selectedFile) {
       setFile(selectedFile)
+      setAutoFileLabel(null)
       setFileInfo(null)
       setSummaryColumns([])
       setSummaryData([])
@@ -44,7 +74,18 @@ function App() {
       const formData = new FormData()
       formData.append('file', file)
 
-      const response = await axios.post('/api/upload-excel', formData)
+      const response = await axios.post('/api/upload-excel', formData, {
+        params: {
+          ns_weight: weights.ns,
+          tot_weight: weights.tot,
+          para_weight: weights.para,
+          arre_weight: weights.arre,
+          sppc_weight: weights.sppc,
+          dc_weight: weights.dc,
+          uc_weight: weights.uc,
+          css_weight: weights.css
+        }
+      })
 
       setFileInfo({
         filename: response.data.filename,
@@ -85,6 +126,35 @@ function App() {
     setGeneratedFileInfo(null)
   }
 
+  const handleMergeComplete = ({ mergedMeta, uploadData }) => {
+    setFile(null)
+    setAutoFileLabel(uploadData.filename || mergedMeta.merged_file)
+    setFileInfo({
+      filename: uploadData.filename,
+      totalRows: uploadData.total_rows,
+      totalColumns: uploadData.total_columns
+    })
+    setSummaryColumns(uploadData.summary_columns || [])
+    setSummaryData(uploadData.summary_data || [])
+    setSummaryMetrics(uploadData.summary_metrics || null)
+    setGeneratedFileInfo(null)
+    setSelectedData(null)
+    setError(null)
+    setView('upload')
+  }
+
+  if (view === 'merge') {
+    return (
+      <MergePrepScreen
+        onSkip={() => {
+          setView('upload')
+        }}
+        onMergeComplete={handleMergeComplete}
+        weights={weights}
+      />
+    )
+  }
+
   if (view === 'parameters' && selectedData) {
     return (
       <DataAnalysisScreen
@@ -114,6 +184,101 @@ function App() {
         <p className="subtitle">
           Upload a RAW audit Excel file and let Audit Optimizer compute the risk summary automatically.
         </p>
+        <div className="merge-reminder">
+          <button className="secondary-btn" onClick={() => setView('merge')}>
+            Back to merge step
+          </button>
+        </div>
+
+        <div className="weights-panel">
+          <div className="weights-panel-header">
+            <h3>Weight configuration (optional)</h3>
+            <p className="weights-note">Leave as-is to use default weights, or adjust to change TOTAL RATING.</p>
+          </div>
+          <div className="weights-grid">
+            <div className="weight-field">
+              <label>Non Staff Expenditure</label>
+              <input
+                type="number"
+                step="0.01"
+                value={weights.ns}
+                onChange={(e) => updateWeight('ns', e.target.value)}
+              />
+            </div>
+            <div className="weight-field">
+              <label>Total Expenditure</label>
+              <input
+                type="number"
+                step="0.01"
+                value={weights.tot}
+                onChange={(e) => updateWeight('tot', e.target.value)}
+              />
+            </div>
+            <div className="weight-field">
+              <label>Part 2A Paras</label>
+              <input
+                type="number"
+                step="0.01"
+                value={weights.para}
+                onChange={(e) => updateWeight('para', e.target.value)}
+              />
+            </div>
+            <div className="weight-field">
+              <label>Arrears of Audit</label>
+              <input
+                type="number"
+                step="0.01"
+                value={weights.arre}
+                onChange={(e) => updateWeight('arre', e.target.value)}
+              />
+            </div>
+            <div className="weight-field">
+              <label>SP + PC</label>
+              <input
+                type="number"
+                step="0.01"
+                value={weights.sppc}
+                onChange={(e) => updateWeight('sppc', e.target.value)}
+              />
+            </div>
+            <div className="weight-field">
+              <label>DC Bills</label>
+              <input
+                type="number"
+                step="0.01"
+                value={weights.dc}
+                onChange={(e) => updateWeight('dc', e.target.value)}
+              />
+            </div>
+            <div className="weight-field">
+              <label>UC Bills</label>
+              <input
+                type="number"
+                step="0.01"
+                value={weights.uc}
+                onChange={(e) => updateWeight('uc', e.target.value)}
+              />
+            </div>
+            <div className="weight-field">
+              <label>CSS Flag</label>
+              <input
+                type="number"
+                step="0.01"
+                value={weights.css}
+                onChange={(e) => updateWeight('css', e.target.value)}
+              />
+            </div>
+          </div>
+          <div
+            className={
+              'weights-sum ' +
+              (isWeightSumValid ? 'ok' : 'error')
+            }
+          >
+            Current sum:{' '}
+            {weightSum.toFixed(2)} (target: 1.00)
+          </div>
+        </div>
 
         <div className="upload-section">
           <div className="file-input-wrapper">
@@ -131,7 +296,7 @@ function App() {
 
           <button
             onClick={handleUpload}
-            disabled={!file || loading}
+            disabled={!file || loading || !isWeightSumValid}
             className="upload-btn"
           >
             {loading ? 'Processing...' : 'Upload & Analyze'}
@@ -139,6 +304,12 @@ function App() {
         </div>
 
         {error && <div className="error-message">{error}</div>}
+
+        {autoFileLabel && (
+          <div className="info-pill">
+            Using merged workbook: <strong>{autoFileLabel}</strong>
+          </div>
+        )}
 
         {fileInfo && (
           <div className="file-info">

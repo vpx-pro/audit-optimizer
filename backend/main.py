@@ -5,7 +5,7 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import uvicorn
@@ -16,8 +16,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from services.risk_calculator import recalc_and_summarize_from_bytes
 from services.audit_selection_optimizer import run_audit_selection_optimizer
+from services.merge_sources import SOURCE_CONFIG, merge_source_files
+from services.risk_calculator import recalc_and_summarize_from_bytes
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -52,48 +53,40 @@ async def health():
     return {"status": "ok"}
 
 @app.post("/api/upload-excel")
-async def upload_excel(file: UploadFile = File(...)):
+async def upload_excel(
+    file: UploadFile = File(...),
+    ns_weight: float = Query(0.20),
+    tot_weight: float = Query(0.20),
+    para_weight: float = Query(0.15),
+    arre_weight: float = Query(0.15),
+    sppc_weight: float = Query(0.05),
+    dc_weight: float = Query(0.10),
+    uc_weight: float = Query(0.10),
+    css_weight: float = Query(0.05),
+):
     """
     Upload an Excel file and return its column names
     """
     try:
-        # Check if file is Excel
-        if not file.filename.endswith(('.xlsx', '.xls')):
+        if not file.filename.endswith((".xlsx", ".xls")):
             raise HTTPException(status_code=400, detail="File must be an Excel file (.xlsx or .xls)")
-        
-        # Read file content
-        contents = await file.read()
-        
-        # Read Excel file into pandas
-        excel_file = io.BytesIO(contents)
-        df = pd.read_excel(excel_file, engine='openpyxl')
-        
-        # Get column names and their data types
-        columns_info = [
-            {
-                "name": col,
-                "type": str(df[col].dtype),
-                "sample_values": df[col].dropna().head(5).tolist() if not df[col].dropna().empty else []
-            }
-            for col in df.columns
-        ]
 
-        # Run the risk calculation pipeline to produce summary data
+        contents = await file.read()
         try:
-            summary_columns, summary_data, summary_metrics = recalc_and_summarize_from_bytes(contents)
+            weights = {
+                "ns": ns_weight,
+                "tot": tot_weight,
+                "para": para_weight,
+                "arre": arre_weight,
+                "sppc": sppc_weight,
+                "dc": dc_weight,
+                "uc": uc_weight,
+                "css": css_weight,
+            }
+            return _process_excel_contents(contents, file.filename, weights=weights)
         except KeyError as calc_error:
             raise HTTPException(status_code=400, detail=f"Risk calculation error: {str(calc_error)}")
 
-        return {
-            "filename": file.filename,
-            "columns": columns_info,
-            "total_rows": len(df),
-            "total_columns": len(df.columns),
-            "summary_columns": summary_columns,
-            "summary_data": summary_data,
-            "summary_metrics": summary_metrics,
-        }
-    
     except KeyError as e:
         raise HTTPException(status_code=400, detail=f"Missing required column: {str(e)}")
     except Exception as e:
@@ -206,6 +199,43 @@ class RunOptimizerRequest(BaseModel):
     file_name: str
 
 
+class MergedFileRequest(BaseModel):
+    file_name: str
+    weights: Optional[Dict[str, float]] = None
+
+
+def _process_excel_contents(
+    contents: bytes,
+    filename: str,
+    weights: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
+    excel_file = io.BytesIO(contents)
+    df = pd.read_excel(excel_file, engine="openpyxl")
+
+    columns_info = [
+        {
+            "name": col,
+            "type": str(df[col].dtype),
+            "sample_values": df[col].dropna().head(5).tolist() if not df[col].dropna().empty else [],
+        }
+        for col in df.columns
+    ]
+
+    summary_columns, summary_data, summary_metrics = recalc_and_summarize_from_bytes(
+        contents, weights=weights
+    )
+
+    return {
+        "filename": filename,
+        "columns": columns_info,
+        "total_rows": len(df),
+        "total_columns": len(df.columns),
+        "summary_columns": summary_columns,
+        "summary_data": summary_data,
+        "summary_metrics": summary_metrics,
+    }
+
+
 def _sanitize_filename(name: str, suffix: str) -> str:
     base = re.sub(r"[^A-Za-z0-9_\-]+", "_", name.strip()) or "Audit_Universe"
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -282,6 +312,76 @@ async def run_selection_optimizer(request: RunOptimizerRequest):
     except Exception as e:
         logger.exception("Failed to run audit selection optimizer")
         raise HTTPException(status_code=500, detail=f"Failed to run optimizer: {str(e)}")
+
+
+@app.post("/api/upload-merged-file")
+async def upload_merged_file(payload: MergedFileRequest):
+    file_path = GENERATED_DIR / payload.file_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Merged file not found.")
+
+    try:
+        contents = file_path.read_bytes()
+        return _process_excel_contents(contents, file_path.name, weights=payload.weights)
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=f"Risk calculation error: {str(e)}")
+    except Exception as e:
+        logger.exception("Failed to process merged file")
+        raise HTTPException(status_code=500, detail=f"Error reading merged file: {str(e)}")
+
+
+@app.post("/api/merge-sources")
+async def merge_sources(
+    audit_universe: UploadFile = File(...),
+    avg_nonstaff: Optional[UploadFile] = File(None),
+    avg_total_staff: Optional[UploadFile] = File(None),
+    part_2a_paras: Optional[UploadFile] = File(None),
+    arrears_audit: Optional[UploadFile] = File(None),
+    special_point_press: Optional[UploadFile] = File(None),
+    dc_bills: Optional[UploadFile] = File(None),
+    uc_bills: Optional[UploadFile] = File(None),
+    css: Optional[UploadFile] = File(None),
+):
+    optional_uploads = {
+        "avg_nonstaff": avg_nonstaff,
+        "avg_total_staff": avg_total_staff,
+        "part_2a_paras": part_2a_paras,
+        "arrears_audit": arrears_audit,
+        "special_point_press": special_point_press,
+        "dc_bills": dc_bills,
+        "uc_bills": uc_bills,
+        "css": css,
+    }
+
+    try:
+        base_bytes = await audit_universe.read()
+        optional_bytes: Dict[str, bytes] = {}
+        for key, upload in optional_uploads.items():
+            if upload:
+                optional_bytes[key] = await upload.read()
+
+        merged_df, sources_used = merge_source_files(base_bytes, optional_bytes)
+        merged_filename = _sanitize_filename(Path(audit_universe.filename or "Audit_Universe").stem, "MergedSources")
+        merged_path = GENERATED_DIR / merged_filename
+        merged_df.to_excel(merged_path, index=False)
+
+        present_sources = list(optional_bytes.keys())
+        missing_sources = [key for key, _ in SOURCE_CONFIG if key not in optional_bytes]
+
+        return {
+            "merged_file": merged_filename,
+            "download_url": f"/api/files/{merged_filename}",
+            "total_rows": len(merged_df),
+            "total_columns": len(merged_df.columns),
+            "sources_used": sources_used,
+            "sources_provided": present_sources,
+            "sources_missing": missing_sources,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to merge audit sources")
+        raise HTTPException(status_code=500, detail=f"Failed to merge sources: {str(exc)}")
 
 
 @app.get("/api/files/{file_name}")
