@@ -4,14 +4,14 @@ A full-stack application for importing Excel files, selecting columns, and perfo
 
 ## Features
 
-- Upload RAW Excel files (.xlsx, .xls)
-- Merge Audit Universe workbook with optional parameter files before running the risk calculator
-- Automatically run the Forest Risk calculator script on RAW uploads
-- View risk summary metrics (ratings, risk category breakdown, entity counts)
-- Upload and edit the Parameters workbook inline
-- Generate a combined Audit Universe workbook directly from the browser
-- Run the AMG Audit Selection Optimizer script on the combined file and download the outputs/logs
-- Modern, responsive UI
+- Merge a base Audit Universe with multiple optional parameter workbooks using a guided **Merge Sources** step.
+- Upload RAW Excel files (.xlsx, .xls) and automatically run the Forest Risk calculator to produce a clean, normalized universe.
+- Configure **risk factor weightages** (Non Staff, Total Expenditure, Part 2A Paras, Arrears, SP+PC, DC, UC, CSS) and have `TOTAL RATING` computed using those weights.
+- See a rich risk summary: entity counts, min/max/average ratings, and risk category breakdown, plus a preview of the output universe.
+- Upload and edit the Parameters workbook inline from the browser before generating the combined Audit Universe.
+- Generate and download the combined Audit Universe workbook directly from the UI.
+- Run the AMG Audit Selection Optimizer script, view headline KPIs and department/section summaries, and download the optimizer’s results and log files.
+- Modern, responsive React UI with a clear multi-step flow (Merge → Risk Summary → Parameters → Optimizer).
 
 ## Project Structure
 
@@ -197,18 +197,23 @@ Run the AMG audit selection script on a previously generated combined workbook.
 
 ## Workflow at a Glance
 
-1. **RAW Upload (Upload screen)**  
-   - Select any RAW audit Excel file.  
-   - Backend runs the Forest Risk calculator and responds with a column listing, summary metrics, and a preview table.  
-   - Review the counts + sample data, then proceed.
+1. **Data Preparation & Merge (Merge Sources screen)**  
+   - Upload the base Audit Universe (without parameter columns) and any subset of the eight optional parameter sheets.  
+   - Run the merge to generate a single enriched workbook and optionally download it for archival.  
+   - Optionally configure risk factor weights (sum must be 1.0) that will be used when computing `TOTAL RATING`.
 
-2. **Parameters & Audit Universe (Parameters screen)**  
+2. **RAW Upload & Risk Summary (Upload screen)**  
+   - Upload a RAW or merged audit Excel file.  
+   - Backend runs the Forest Risk calculator and responds with a column listing, summary metrics, and a preview table.  
+   - Review counts, sample data, and confirm your chosen weights, then proceed.
+
+3. **Parameters & Audit Universe (Parameters screen)**  
    - Upload the parameters workbook (same format as the AMG scripts).  
    - Edit High/Medium/Low percentages, mandays, etc. inline.  
    - Click **Generate Audit Universe** to produce a merged workbook (Parameters + processed Audit Universe).  
    - A download button is shown once the file is generated; no auto-download surprises.
 
-3. **Optimizer Dashboard (Optimizer screen)**  
+4. **Optimizer Dashboard (Optimizer screen)**  
    - Click **Run Audit Selection Optimizer** to execute the AMG selection script server-side.  
    - Download the generated Results workbook and Log file whenever you like.  
    - Review the summary cards (mandays, utilization, selected units, risk mix) plus department/section tables—handy for quick QA before distributing the files.
