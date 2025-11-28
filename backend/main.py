@@ -85,11 +85,18 @@ async def upload_excel(
             }
             return _process_excel_contents(contents, file.filename, weights=weights)
         except KeyError as calc_error:
+            # Surface calculation issues (usually missing required columns in the
+            # uploaded workbook) as a 400 with a clear message.
             raise HTTPException(status_code=400, detail=f"Risk calculation error: {str(calc_error)}")
 
+    except HTTPException:
+        # Preserve any HTTPException raised above (e.g. risk calculation errors)
+        # instead of wrapping them as a generic 500.
+        raise
     except KeyError as e:
         raise HTTPException(status_code=400, detail=f"Missing required column: {str(e)}")
     except Exception as e:
+        logger.exception("Unexpected error while processing uploaded Excel file")
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
 
 @app.post("/api/select-columns")
@@ -250,6 +257,23 @@ def _write_audit_universe_excel(request: AuditUniverseRequest) -> Path:
 
     summary_df = pd.DataFrame(request.summary_data, columns=request.summary_columns)
 
+    # Final QA: ensure only rows with a valid OIOS Code are carried forward.
+    # We mirror the cleaning used in `merge_source_files` so that blanks,
+    # textual NaNs, and `None`-like markers are treated consistently.
+    if "OIOS Code" in summary_df.columns:
+        oios = summary_df["OIOS Code"].astype(str).str.strip()
+        invalid_mask = oios.str.lower().isin(["", "nan", "none"])
+        before_rows = len(summary_df)
+        summary_df.loc[invalid_mask, "OIOS Code"] = pd.NA
+        summary_df = summary_df.dropna(subset=["OIOS Code"])
+        summary_df["OIOS Code"] = summary_df["OIOS Code"].astype(str).str.strip()
+        after_rows = len(summary_df)
+        if before_rows != after_rows:
+            logger.info(
+                "Filtered summary rows without a valid OIOS Code: "
+                f"{before_rows - after_rows} dropped, {after_rows} remaining."
+            )
+
     expected_param_cols = [
         "Department",
         "Percentage",
@@ -262,6 +286,19 @@ def _write_audit_universe_excel(request: AuditUniverseRequest) -> Path:
     ]
 
     params_df = pd.DataFrame(request.parameters_data)
+
+    # Support both the template headers (High%, Medium%, Low%) and the
+    # internal names (HighPct/MedPct/LowPct) by normalizing here.
+    rename_map = {}
+    if "High%" in params_df.columns and "HighPct" not in params_df.columns:
+        rename_map["High%"] = "HighPct"
+    if "Medium%" in params_df.columns and "MedPct" not in params_df.columns:
+        rename_map["Medium%"] = "MedPct"
+    if "Low%" in params_df.columns and "LowPct" not in params_df.columns:
+        rename_map["Low%"] = "LowPct"
+    if rename_map:
+        params_df = params_df.rename(columns=rename_map)
+
     for col in expected_param_cols:
         if col not in params_df.columns:
             params_df[col] = ""

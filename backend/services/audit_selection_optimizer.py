@@ -116,6 +116,16 @@ def run_audit_selection_optimizer(input_file: Path, output_dir: Path) -> Tuple[P
         high_md, med_md, low_md = row["HighDays"], row["MediumDays"], row["LowDays"]
         high_pct, med_pct, low_pct = row["HighPct"], row["MedPct"], row["LowPct"]
 
+        # If no High/Medium/Low percentage split is provided for a department,
+        # fall back to a sensible default split so that units still get selected.
+        # Default: 40% High, 40% Medium, 20% Low (matches README examples).
+        if (high_pct + med_pct + low_pct) == 0:
+            high_pct, med_pct, low_pct = 40.0, 40.0, 20.0
+            log_lines.append(
+                f"ℹ️ {dept}: High/Med/Low percentage split missing – "
+                f"using default 40/40/20."
+            )
+
         high_target = round(dept_total * high_pct / 100)
         med_target = round(dept_total * med_pct / 100)
         low_target = round(dept_total * low_pct / 100)
@@ -135,6 +145,11 @@ def run_audit_selection_optimizer(input_file: Path, output_dir: Path) -> Tuple[P
         utilization = round((used_total / dept_total) * 100, 1) if dept_total > 0 else 0
         alloc_summary.append((dept, dept_total, used_total, utilization))
         log_lines.append(f"{dept:10s} | Target={dept_total:5.0f} | Used={used_total:5.0f} | Util={utilization:5.1f}% | H:{high_units} M:{med_units} L:{low_units}")
+
+    # Sync selection flags and party days back to the full audit sheet
+    # so that the exported workbook reflects the optimizer's choices.
+    audit_full["Selected"] = audit["Selected"]
+    audit_full["Party days"] = audit["Party days"]
 
     timestamp_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     base_name = input_file.stem
